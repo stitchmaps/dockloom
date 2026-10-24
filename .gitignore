@@ -1,0 +1,13 @@
+node_modules/
+dist/
+dist-electron/
+release/
+test-results/
+.env
+.env.*
+!.env.example
+*.log
+*.pem
+*.key
+.local/
+coverage/

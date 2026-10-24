@@ -1,0 +1,26 @@
+name: Build Windows release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run package
+      - name: Checksums
+        shell: pwsh
+        run: Get-ChildItem release/*.exe | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize | Out-File release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dockloom-windows-unsigned
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
