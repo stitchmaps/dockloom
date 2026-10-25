@@ -308,3 +308,13 @@ with tempfile.TemporaryDirectory() as temp:
     switch_release(app, release, record)
     assert len(calls) == 1
 `));
+
+test('short health deadline still allows Compose to finish graceful container replacement', { skip: !python }, () => remoteCheck(String.raw`
+with tempfile.TemporaryDirectory() as temp:
+    app = pathlib.Path(temp) / 'example'
+    release_record = lambda *args: {'kind': 'compose', 'healthTimeout': 8}
+    calls = []
+    compose_command = lambda argv, **kwargs: calls.append((argv, kwargs))
+    compose(app, 'a' * 32, ['up', '-d', '--force-recreate', '--timeout', '10'])
+    assert calls[0][1]['timeout'] >= 180
+`));

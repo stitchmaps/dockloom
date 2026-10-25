@@ -285,7 +285,9 @@ def verify_release(directory):
 def compose(app, release, args):
     record = release_record(app / 'releases' / release)
     if record.get('kind') == 'compose':
-        timeout = record.get('healthTimeout', 120) if args and args[0] == 'up' else 180
+        # Recreating containers includes graceful shutdown and daemon operations.
+        # A short health deadline must not kill Compose halfway through that switch.
+        timeout = record.get('healthTimeout', 120) + 180 if args and args[0] == 'up' else 180
         return compose_command(['docker', 'compose', '--env-file', '/dev/null', '--project-name', project_name(app), '--project-directory', str(app), '-f', str(app / 'releases' / release / 'compose.json')] + args, timeout=timeout)
     return run(['docker', 'compose', '--project-name', project_name(app), '--project-directory', str(app), '-f', str(app / 'releases' / release / 'compose.json')] + args, timeout=180)
 
