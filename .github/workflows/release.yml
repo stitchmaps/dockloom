@@ -30,6 +30,7 @@ jobs:
         shell: pwsh
         run: |
           $releaseVersion = (Get-Content package.json | ConvertFrom-Json).version
+          Get-ChildItem release/*.exe | Where-Object { $_.Name.Contains(' ') } | ForEach-Object { Rename-Item -LiteralPath $_.FullName -NewName $_.Name.Replace(' ', '-') }
           git archive --format=zip --prefix=dockloom/ --output="release/Dockloom-$releaseVersion-source.zip" HEAD
           $checksums = Get-ChildItem release/*.exe,release/*-source.zip | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
           $checksums | Set-Content release/SHA256SUMS.txt -Encoding utf8

@@ -158,6 +158,7 @@ volumes:
   await writeFile(path.join(composeSource, 'Dockerfile'), 'FROM nginx:alpine\nCMD ["/bin/sh", "-c", "exit 1"]\n');
   const failedCompose = await finish(await core.deployCompose(server, { ...composeSpec, healthTimeout: 8 }), 'failed');
   assert(!failedCompose.log.includes('synthetic-test-value'));
+  console.log('Failed Compose recovery trace:\n' + failedCompose.log);
   assert.match(await composePage(), /compose-fixture-v1/);
   assert.match(await getPage(), /fixture-v1/);
   assert.equal(await run('docker', ['exec', name, 'docker', 'exec', (await findCompose('state')).id, 'cat', '/state/value']), 'keep-me');
