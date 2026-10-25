@@ -2,9 +2,10 @@ import { constants } from 'node:fs';
 import { lstat, readdir, open, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Server, Snapshot, StaticDeploy, DeployPlan, Job, Release, ComposeImport, ContainerAction } from '../shared/types';
+import { parseDocument } from 'yaml';
+import type { Server, Snapshot, StaticDeploy, DeployPlan, Job, Release, ComposeImport, ComposeDeploy, ComposePlan, ContainerAction } from '../shared/types';
 import { SSHTransport, type SSHOptions, type RemoteTransport } from './ssh';
-import { redact, validateContainerId, validateId, validateName, validateServer, validateStatic, validateCompose } from './validation';
+import { redact, validateContainerId, validateId, validateName, validateServer, validateStatic, validateCompose, validateComposeDeploy } from './validation';
 export * from './validation';
 export { SSHTransport, sshArguments } from './ssh';
 export type { RemoteTransport, SSHOptions } from './ssh';
@@ -13,11 +14,11 @@ export { REMOTE_PYTHON } from './remote';
 export const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 export const MAX_SOURCE_FILES = 5000;
 interface SourceFile { path: string; data: string; sha256: string; size: number }
-async function collectSource(source: string): Promise<{ files: SourceFile[]; bytes: number }> {
+async function collectSource(source: string, envFiles?: string[]): Promise<{ files: SourceFile[]; bytes: number }> {
   const selected = path.resolve(source);
   if ((await lstat(selected)).isSymbolicLink()) throw new Error('Source must not be a symbolic link');
   const root = await realpath(selected);
-  if (!(await lstat(root)).isDirectory()) throw new Error('Select a built static directory (ZIP is not supported in v0.1)');
+  if (!(await lstat(root)).isDirectory()) throw new Error('Select a source directory; archive files are not supported');
   const files: SourceFile[] = [];
   let bytes = 0;
   async function walk(directory: string, relative = ''): Promise<void> {
@@ -25,13 +26,14 @@ async function collectSource(source: string): Promise<{ files: SourceFile[]; byt
       if (/[\x00-\x1f\x7f\\]/.test(entry.name)) throw new Error('Unsupported source filename');
       const filename = path.join(directory, entry.name);
       const name = relative ? `${relative}/${entry.name}` : entry.name;
+      if (envFiles && (['.git', 'node_modules'].includes(entry.name) || (entry.name === '.env' || entry.name.startsWith('.env.')) && !envFiles.includes(name))) continue;
       const stat = await lstat(filename);
       if (stat.isSymbolicLink()) throw new Error(`Symbolic links are not allowed: ${name}`);
       const canonical = await realpath(filename);
       if (!canonical.startsWith(root + path.sep)) throw new Error('Source path escapes the selected directory');
       if (stat.isDirectory()) await walk(filename, name);
       else if (stat.isFile()) {
-        if (files.length >= MAX_SOURCE_FILES || bytes + stat.size > MAX_SOURCE_BYTES) throw new Error('Static source exceeds 5000 files or 32 MiB');
+        if (files.length >= MAX_SOURCE_FILES || bytes + stat.size > MAX_SOURCE_BYTES) throw new Error('Source exceeds 5000 files or 32 MiB');
         const handle = await open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
         try {
           const before = await handle.stat();
@@ -54,8 +56,28 @@ async function collectSource(source: string): Promise<{ files: SourceFile[]; byt
     }
   }
   await walk(root);
-  if (!files.some(file => file.path === 'index.html')) throw new Error('Static directory must contain index.html');
+  if (!envFiles && !files.some(file => file.path === 'index.html')) throw new Error('Static directory must contain index.html');
   return { files, bytes };
+}
+
+async function composeSource(request: ComposeDeploy) {
+  validateComposeDeploy(request);
+  const source = await collectSource(request.source, request.envFiles);
+  const byPath = new Map(source.files.map(file => [file.path, file]));
+  for (const filename of [...request.files, ...request.envFiles]) {
+    if (!byPath.has(filename)) throw new Error('A selected Compose or environment file is missing or excluded');
+  }
+  const documents = request.files.map(filename => {
+    try {
+      const doc = parseDocument(Buffer.from(byPath.get(filename)!.data, 'base64').toString('utf8'), { merge: true });
+      if (doc.errors.length || doc.warnings.length) throw new Error('Invalid YAML');
+      return doc.toJSON();
+    } catch {
+      // YAML diagnostics can contain entire secret-bearing lines.
+      throw new Error('Cannot parse a selected Compose file; use standard YAML without custom tags');
+    }
+  });
+  return { ...source, documents };
 }
 
 export class DeploymentCore {
@@ -90,6 +112,16 @@ export class DeploymentCore {
     validateServer(server); validateStatic(request);
     const source = await collectSource(request.source);
     return this.call(server, 'deploy', { spec: { ...request, source: undefined }, files: source.files });
+  }
+  async planCompose(server: Server, request: ComposeDeploy): Promise<ComposePlan> {
+    validateServer(server);
+    const source = await composeSource(request);
+    return this.call(server, 'planCompose', { spec: { ...request, source: undefined }, files: source.files, documents: source.documents });
+  }
+  async deployCompose(server: Server, request: ComposeDeploy): Promise<Job> {
+    validateServer(server);
+    const source = await composeSource(request);
+    return this.call(server, 'deployCompose', { spec: { ...request, source: undefined }, files: source.files, documents: source.documents });
   }
   releases(server: Server): Promise<Release[]> { return this.call(server, 'releases'); }
   rollback(server: Server, app: string, release: string): Promise<Job> {

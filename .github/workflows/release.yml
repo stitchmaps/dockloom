@@ -1,11 +1,19 @@
 name: Build Windows release
 on:
   workflow_dispatch:
+    inputs:
+      publish_draft:
+        description: Create a draft GitHub Release with the built artifacts
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
   package:
     runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,12 +23,33 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run package
-      - name: Checksums
+      - run: npm run test:ui
+        env:
+          DOCKLOOM_EXECUTABLE: ${{ github.workspace }}\release\win-unpacked\Dockloom.exe
+      - name: Source archive and checksums
         shell: pwsh
-        run: Get-ChildItem release/*.exe | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize | Out-File release/SHA256SUMS.txt
+        run: |
+          $releaseVersion = (Get-Content package.json | ConvertFrom-Json).version
+          git archive --format=zip --prefix=dockloom/ --output="release/Dockloom-$releaseVersion-source.zip" HEAD
+          $checksums = Get-ChildItem release/*.exe,release/*-source.zip | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
+          $checksums | Set-Content release/SHA256SUMS.txt -Encoding utf8
       - uses: actions/upload-artifact@v4
         with:
           name: dockloom-windows-unsigned
           path: |
             release/*.exe
+            release/*-source.zip
             release/SHA256SUMS.txt
+      - name: Create draft release
+        if: inputs.publish_draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          $releaseVersion = (Get-Content package.json | ConvertFrom-Json).version
+          if ($releaseVersion -notmatch '^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$') { throw 'Invalid package version' }
+          $releaseFiles = (Get-ChildItem release/*.exe,release/*-source.zip,release/SHA256SUMS.txt).FullName
+          gh release create "v$releaseVersion" @releaseFiles --target $env:RELEASE_COMMIT --draft --title "Dockloom v$releaseVersion" --notes-file CHANGELOG.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed; no existing release was overwritten' }

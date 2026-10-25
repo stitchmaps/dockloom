@@ -6,13 +6,13 @@ This is an alpha, not a claim that every Linux distribution or Compose configura
 | --- | --- |
 | Windows 11 x64 desktop | Type checking, production build, actual Electron window/IPC and UI workflows |
 | Alibaba Cloud Linux 3, x86_64, Python 3.6.8, Docker 26.1.3, Compose 2.27.0 | Read-only discovery of an existing nine-container deployment; no production changes |
-| Local disposable Alpine Linux fixture, Python 3.12, Docker 27 / Compose v2 | Real SSH deployment, version update, rollback, HTTP identity, logs, stop/start and failed-release recovery |
+| Local disposable Alpine Linux fixture, Python 3.12, Docker 27 / Compose v2 | Real SSH static and Compose deployment, source builds, ordered overrides, environment files, profiles, healthchecks, named-volume persistence, version update, rollback and failed-release recovery |
 | macOS/Linux desktop | Source architecture intended to be portable; installers not yet verified |
 | arm64 or non-root Docker access | Not yet integration-certified |
 
 The remote bootstrap uses Python standard library syntax compatible with 3.6+. The unit suite checks the embedded script's syntax and exercises failure recovery, drift detection, ownership, paths, log redaction and process identity. The oldest Python is supported for compatibility, not recommended for a new installation.
 
-Docker Compose v1, Kubernetes, Podman, Windows Server, password-prompt SSH, automated sudo, automatic Docker installation and arbitrary application/database rollback are not supported in this alpha.
+Docker Compose v1, Kubernetes, Podman, Windows Server, password-prompt SSH, automated sudo, automatic Docker installation, takeover of existing apps and database rollback are not supported in this alpha. Managed Compose releases support a documented [subset of Compose](compose.md).
 
 ## Reproduce
 

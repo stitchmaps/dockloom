@@ -34,9 +34,9 @@ Unmarked existing namespaces, app directories, symlinked paths and Compose proje
 name collisions are refused. Each application uses project name
 `dockloom-<app>-<root-path-hash>`, isolating the same app name in different roots.
 Compose paths and labels escape dollar signs to preserve literal root paths. Inspection and
-planning do not create remote directories. Releases are immutable files beneath
+planning do not create managed app directories (Compose planning uses a temporary directory). Releases are immutable files beneath
 `apps/<app>/releases/<id>`; checksums detect content/config drift before updates or
-rollback. Static sources must contain `index.html`; directory-only v0.1 rejects
+rollback. Static sources must contain `index.html`; directory input rejects
 symlinks and special files, with limits of 5000 files and 32 MiB. Only select built
 public assets. No ZIP support is claimed.
 
@@ -50,7 +50,7 @@ it is never silently replayed. Manual inspection/recovery is required in that ca
 Detachment uses a new session with redirected descriptors; SSH servers configured
 to kill all session descendants need an administrator-supported execution policy.
 
-Cached images are preferred and pinned to their immutable image IDs. No registry
+For static releases, cached images are preferred and pinned to their immutable image IDs. No registry
 access is needed when the selected image is cached. The image must be compatible
 with the official Nginx configuration layout and support `nginx -t`. Compose and
 Nginx configuration are checked before switching. A server-local HTTP release
@@ -58,7 +58,14 @@ marker plus the running image ID verifies the switch; external reachability is
 not claimed. Successful verification commits `current.json`. Failed switches
 restore and verify the previous release; recovery failure is recorded and blocks
 further switches. No global `down`, prune, volume deletion or existing Compose edits.
-Old releases and images are retained; there is no automatic cleanup in v0.1.
+Old releases and images are retained; there is no automatic cleanup.
+
+`planCompose` and `deployCompose` accept ordered local configuration/environment files,
+profiles and a health deadline. The remote Compose parser normalizes the configuration,
+local builds receive unique release tags and all services are pinned to image IDs.
+Named volumes retain stable project names. Startup verification checks service identity,
+state and health; rollback restores old configuration/images, never database contents.
+See [supported Compose features](../../docs/compose.md) for the bounded input subset.
 
 Logs are capped and common credentials/private keys redacted on both sides. This
 cannot identify every secret an arbitrary application might print. Remote worker

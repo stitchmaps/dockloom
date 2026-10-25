@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowLeft, ArrowRight, Check, FolderOpen, KeyRound, Rocket, ShieldCheck } from 'lucide-react';
-import type { ComposeImport, DeployPlan, DockloomAPI, Server, StaticDeploy } from '../../packages/shared/types';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, FolderOpen, KeyRound, Rocket, ShieldCheck } from 'lucide-react';
+import type { ComposeDeploy, ComposeImport, ComposePlan, DeployPlan, DockloomAPI, Server, StaticDeploy } from '../../packages/shared/types';
 import type { Translate } from './i18n';
 import { bytes, Definition, ErrorNotice, Field, Loading, Modal, useRemote } from './ui';
 
@@ -80,6 +80,46 @@ export function DeployDialog({ api, server, t, busy, error, run, onClose, demo, 
         </>}
       </div>
       <footer className="modal-footer"><button type="button" disabled={busy} onClick={() => plan ? setPlan(undefined) : onClose()}>{plan && <ArrowLeft size={15} />}{plan ? t('back') : t('cancel')}</button><button type="submit" className="primary" disabled={busy || !form.source}><Rocket size={15} />{busy ? t('saving') : plan ? t('deployNow') : t('plan')}</button></footer>
+    </form>
+  </Modal>;
+}
+
+export function ComposeDeployDialog({ api, server, t, busy, error, run, onClose, demo, onStarted }: DialogProps & { server: Server; onStarted: (id: string) => void }) {
+  const [form, setForm] = useState<ComposeDeploy>({ app: '', source: '', files: ['compose.yaml'], envFiles: [], profiles: [], healthTimeout: 120 });
+  const [review, setReview] = useState<{ request: ComposeDeploy; plan: ComposePlan }>();
+  const update = <K extends keyof ComposeDeploy>(key: K, value: ComposeDeploy[K]) => setForm(current => ({ ...current, [key]: value }));
+  const cleanLines = (lines: string[]) => lines.map(line => line.trim()).filter(Boolean);
+  const plan = review?.plan;
+  const request = review?.request ?? form;
+  return <Modal title={t('deployCompose')} busy={busy} onClose={onClose} t={t} wide>
+    <form onSubmit={event => submit(event, () => void run(async () => {
+      if (!review) {
+        const request = { ...form, app: form.app.trim(), files: cleanLines(form.files), envFiles: cleanLines(form.envFiles), profiles: cleanLines(form.profiles) };
+        const plan = await api.planCompose(server.id, request);
+        setReview({ request, plan });
+      } else { const job = await api.deployCompose(server.id, review.request); onStarted(job.id); onClose(); }
+    }))}>
+      <div className="modal-body"><p className="subtitle">{t('composeDeploySubtitle')}</p>
+        <div className="steps"><span className={!plan ? 'active' : 'done'}>{plan ? <Check size={14} /> : <b>1</b>}{t('configure')}</span><i /><span className={plan ? 'active' : ''}><b>2</b>{t('review')}</span><i /><span><b>3</b>{t('execute')}</span></div>
+        <div className="target-server"><span className="status-dot" /><strong>{server.name}</strong><code>{server.host}</code>{demo && <span className="demo-badge">{t('demo')}</span>}</div>
+        <ErrorNotice error={error} t={t} />
+        {!plan ? <fieldset disabled={busy}>
+          <Field label={t('appName')} hint={t('appNameHint')}><input autoFocus required pattern="[a-z][a-z0-9-]{0,39}" maxLength={40} value={form.app} onChange={e => update('app', e.target.value)} placeholder="my-stack" /></Field>
+          <Field label={t('composeSource')} hint={t('composeSourceHint')}><span className="input-action"><input required readOnly value={form.source} placeholder={t('chooseDirectory')} /><button type="button" onClick={() => void run(async () => { const directory = await api.chooseDirectory(); if (directory) update('source', directory); })}><FolderOpen size={16} />{t('chooseDirectory')}</button></span></Field>
+          <Field label={t('composeFiles')} hint={t('composeFilesHint')}><textarea required rows={3} value={form.files.join('\n')} onChange={e => update('files', e.target.value.split('\n'))} /></Field>
+          <Field label={`${t('composeEnvFiles')} · ${t('optional')}`} hint={t('composeEnvHint')}><textarea rows={2} value={form.envFiles.join('\n')} onChange={e => update('envFiles', e.target.value.split('\n'))} placeholder=".env.production" /></Field>
+          <div className="form-grid"><Field label={`${t('composeProfiles')} · ${t('optional')}`}><textarea rows={2} value={form.profiles.join('\n')} onChange={e => update('profiles', e.target.value.split('\n'))} placeholder="production" /></Field><Field label={t('healthTimeout')}><input required type="number" min={1} max={600} step={1} value={form.healthTimeout || ''} onChange={e => update('healthTimeout', Number(e.target.value))} /></Field></div>
+        </fieldset> : <>
+          <dl className="plan-details"><Definition label={t('appName')}>{request.app}</Definition><Definition label={t('composeSource')}><code>{request.source}</code></Definition><Definition label={t('target')}><code>{plan.target}</code></Definition><Definition label={t('composeFiles')}><code>{request.files.join('\n')}</code></Definition><Definition label={t('composeEnvFiles')}><code>{request.envFiles.join('\n') || '—'}</code></Definition><Definition label={t('composeProfiles')}><code>{request.profiles.join('\n') || '—'}</code></Definition><Definition label={t('healthTimeout')}>{request.healthTimeout}</Definition><Definition label={t('files')}>{plan.fileCount}</Definition><Definition label={t('size')}>{bytes(plan.bytes)}</Definition></dl>
+          <section><h3>{t('composeServices')}</h3><ul className="plan-summary">{plan.services.map(service => <li key={service}><Check size={14} /><code>{service}</code></li>)}</ul>{!plan.services.length && <p className="hint">{t('composeNoServices')}</p>}</section>
+          <section><h3>{t('composeSummary')}</h3><ul className="plan-summary">{plan.summary.map((line, index) => <li key={index}><Check size={14} />{line}</li>)}</ul></section>
+          <section><h3>{t('composeWarnings')}</h3>{plan.warnings.length ? <ul className="plan-summary compose-warnings">{plan.warnings.map((line, index) => <li key={index}><AlertTriangle size={14} />{line}</li>)}</ul> : <p className="hint">{t('composeNoWarnings')}</p>}</section>
+          <p className="hint">{t('composeDeployConfirm')}</p>
+        </>}
+        <p className="hint">{t('composeDataNote')}</p>
+        {demo && <p className="hint">{t('demoNote')}</p>}
+      </div>
+      <footer className="modal-footer"><button type="button" disabled={busy} onClick={() => plan ? setReview(undefined) : onClose()}>{plan && <ArrowLeft size={15} />}{plan ? t('back') : t('cancel')}</button><button type="submit" className="primary" disabled={busy || !form.source || !form.files.some(file => file.trim()) || Boolean(plan && !plan.services.length)}><Rocket size={15} />{busy ? t('saving') : plan ? t('deployNow') : t('plan')}</button></footer>
     </form>
   </Modal>;
 }

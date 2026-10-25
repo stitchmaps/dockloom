@@ -1,8 +1,8 @@
 # Dockloom
 
-A local-first desktop workspace for your Docker servers. Connect over SSH, discover Compose projects, inspect logs, and publish a built static site with version history and rollback.
+A local-first desktop workspace for your Docker servers. Connect over SSH, discover Compose projects, inspect logs, and publish static sites or multi-service Compose applications with version history and rollback.
 
-**v0.1 alpha · Windows desktop · MIT**
+**v0.2 alpha · Windows desktop · MIT**
 
 [简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
@@ -15,6 +15,8 @@ A local-first desktop workspace for your Docker servers. Connect over SSH, disco
 - Container logs, start, stop and restart, scoped to the selected container.
 - Static directory deployment with a review step, static/SPA mode and configurable binding/port.
 - Versioned static releases, health verification, rollback and server-side task records.
+- Compose releases from local source: ordered configuration and environment files, profiles, local Dockerfile builds, image pinning, health verification and rollback.
+- Project-scoped named volumes that persist across updates and rollback.
 - Read-only validation of existing Compose files without rewriting them.
 - Chinese/English interface and an explicitly labeled, network-free demo mode.
 
@@ -52,11 +54,23 @@ The remote host needs Linux, SSH, Python 3, Docker Engine and Docker Compose v2.
 
 Static input must contain `index.html`; this alpha accepts a directory, up to 32 MiB / 5,000 files, with no symlinks. Upload only built public assets, never a source repository containing secrets.
 
+## Publish a Compose application
+
+1. Select **Deploy Compose**, choose a local project directory and enter a new application name.
+2. List Compose files in merge order, followed by any explicit environment files and profiles. Paths are relative to the selected directory. No implicit `.env` is loaded.
+3. Review the resolved service list and warnings, then publish. Builds and image downloads run on the remote server.
+4. Inspect the task and release history. Reuse the application name for updates, or select a prior release to roll back.
+
+Try [the web + Redis example](examples/compose-stack/compose.yaml). It binds the website to the server's loopback address on port 8088; use an SSH tunnel or edit the bind address before publishing.
+
+The Compose source limit is also 32 MiB / 5,000 files. `.git`, `node_modules` and unselected `.env*` files are excluded; other source files are uploaded, so choose the directory carefully. Environment files are stored privately on the remote server and frozen into each release. Add `.dockerignore` to keep them out of build contexts. See [supported Compose features](docs/compose.md).
+
 ## Scope and limitations
 
 - Existing Compose projects are discovered and inspected. They are not automatically rewritten or converted into Dockloom-managed releases.
-- The complete deployment/rollback workflow currently applies to static sites created by Dockloom. Arbitrary image/Compose deployment, ZIP import, Git builds and database migration rollback are not implemented yet.
-- Changes can briefly interrupt the affected application. A rollback restores managed static content/configuration; it is not a database backup.
+- Static sites and supported Compose applications created by Dockloom have deployment/rollback workflows. Compose is a supported subset: local builds, project networks, named volumes and read-only source binds; privileged/host-network services and writable binds are rejected.
+- The enabled service set must stay the same across revisions. Use a new app name for service additions/removals. ZIP import, remote Git builds and database migration rollback are not implemented.
+- Changes can briefly interrupt the affected application. Rollback restores image/configuration versions and preserves named-volume data; it is not a database backup or migration reversal.
 - No always-on web panel or public Docker API is required. An authorized deployment creates a short-lived background task and private state under the selected remote root. Closing the app does not stop an already-started task.
 - Local host checks and Docker health are distinct from public reachability. Cloud security groups are not managed by this release.
 - macOS/Linux desktop packages and arm64 targets have not yet been certified. See [compatibility](docs/compatibility.md) for actual tests rather than assumed support.
@@ -75,6 +89,6 @@ The integration suite needs a local Linux-container Docker engine. It creates a 
 
 ## Roadmap
 
-General image/Compose releases; ZIP uploads; explicit environment-file support; platform-signed installers; macOS/Linux packaging; Git-based delivery. No telemetry, cloud account or hosted control plane is required.
+Service-set migration; ZIP uploads; platform-signed installers; macOS/Linux packaging; Git-based delivery. No telemetry, cloud account or hosted control plane is required.
 
 This repository is intended to contain only source code and synthetic examples. Server records belong in the OS user-data directory. Never commit `.env`, private keys, real subscriptions or production logs.

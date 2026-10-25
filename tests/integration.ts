@@ -7,7 +7,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { DeploymentCore } from '../packages/core/index';
-import type { Job, Server, StaticDeploy } from '../packages/shared/types';
+import type { Job, Server, StaticDeploy, ComposeDeploy } from '../packages/shared/types';
 const exec = promisify(execFile);
 const run = async (file: string, args: string[], timeout = 120_000) => (await exec(file, args, { timeout, maxBuffer: 8 * 1024 ** 2, windowsHide: true })).stdout.trim();
 const pause = () => new Promise(r => setTimeout(r, 1000));
@@ -93,6 +93,75 @@ try {
   await mkdir(path.join(temp, 'invalid'));
   await assert.rejects(() => core.plan(server, { ...spec, source: path.join(temp, 'invalid') }));
   console.log('PASS unsafe app + missing index rejected');
+  const composeSource = path.join(temp, 'compose-project'); await mkdir(composeSource);
+  const composeYaml = `services:
+  state:
+    image: nginx:alpine
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["test -f /state/value || echo original > /state/value; exec sleep 2147483647"]
+    volumes: ["state:/state"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/state/value"]
+      interval: 1s
+      timeout: 2s
+      retries: 10
+  web:
+    build: .
+    ports: ["127.0.0.1:18082:80"]
+    environment:
+      SERVICE_LABEL: "\${SERVICE_LABEL}"
+    depends_on:
+      state: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 1s
+      timeout: 2s
+      retries: 3
+  observer:
+    profiles: ["extra"]
+    image: nginx:alpine
+    entrypoint: ["sleep", "2147483647"]
+volumes:
+  state: {}
+`;
+  await writeFile(path.join(composeSource, 'compose.yaml'), composeYaml);
+  await writeFile(path.join(composeSource, 'production.yaml'), 'services:\n  web:\n    environment:\n      OVERRIDE_TEST: "present"\n');
+  await writeFile(path.join(composeSource, 'Dockerfile'), 'FROM nginx:alpine\nCOPY index.html /usr/share/nginx/html/index.html\n');
+  await writeFile(path.join(composeSource, 'index.html'), '<h1>compose-fixture-v1</h1>');
+  await writeFile(path.join(composeSource, '.env'), "SERVICE_LABEL='synthetic-test-value$literal'\n");
+  const composeSpec: ComposeDeploy = { app: 'compose-fixture', source: composeSource, files: ['compose.yaml', 'production.yaml'], envFiles: ['.env'], profiles: ['extra'], healthTimeout: 30 };
+  const composePlan = await core.planCompose(server, composeSpec);
+  assert.deepEqual([...composePlan.services].sort(), ['observer', 'state', 'web']);
+  assert(!JSON.stringify(composePlan).includes('synthetic-test-value'));
+  await finish(await core.deployCompose(server, composeSpec));
+  const composePage = () => run('docker', ['exec', name, 'curl', '-fsS', 'http://127.0.0.1:18082/']);
+  assert.match(await composePage(), /compose-fixture-v1/);
+  const firstCompose = (await core.releases(server)).find(r => r.app === composeSpec.app && r.current)!;
+  assert.equal(firstCompose.kind, 'compose');
+  const findCompose = async (service: string) => {
+    const items = (await core.inspect(server)).containers;
+    const found = items.find(c => c.project.includes('compose-fixture') && c.service === service);
+    assert(found, `Missing Compose service ${service}`); return found;
+  };
+  const stateContainer = await findCompose('state');
+  await run('docker', ['exec', name, 'docker', 'exec', stateContainer.id, 'sh', '-c', 'echo keep-me > /state/value']);
+  const webContainer = await findCompose('web');
+  const dockerEnv = await run('docker', ['exec', name, 'docker', 'inspect', '--format', '{{json .Config.Env}}', webContainer.id]);
+  assert(dockerEnv.includes('SERVICE_LABEL=synthetic-test-value$literal')); assert(dockerEnv.includes('OVERRIDE_TEST=present'));
+  console.log('PASS Compose local build + ordered overrides + env file + profiles + dependent health');
+  await writeFile(path.join(composeSource, 'index.html'), '<h1>compose-fixture-v2</h1>');
+  await finish(await core.deployCompose(server, composeSpec)); assert.match(await composePage(), /compose-fixture-v2/);
+  await finish(await core.rollback(server, composeSpec.app, firstCompose.id)); assert.match(await composePage(), /compose-fixture-v1/);
+  const stateAfter = await findCompose('state');
+  assert.equal(await run('docker', ['exec', name, 'docker', 'exec', stateAfter.id, 'cat', '/state/value']), 'keep-me');
+  console.log('PASS multi-service update/rollback retains named-volume data');
+  await writeFile(path.join(composeSource, 'Dockerfile'), 'FROM nginx:alpine\nCMD ["/bin/sh", "-c", "exit 1"]\n');
+  const failedCompose = await finish(await core.deployCompose(server, { ...composeSpec, healthTimeout: 8 }), 'failed');
+  assert(!failedCompose.log.includes('synthetic-test-value'));
+  assert.match(await composePage(), /compose-fixture-v1/);
+  assert.match(await getPage(), /fixture-v1/);
+  assert.equal(await run('docker', ['exec', name, 'docker', 'exec', (await findCompose('state')).id, 'cat', '/state/value']), 'keep-me');
+  console.log('PASS Compose startup failure restores old stack, preserves data and leaves other app untouched');
   const records = await core.jobs(server); assert(records.length >= 4);
   console.log('ALL INTEGRATION CHECKS PASSED');
 } finally {

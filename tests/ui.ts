@@ -15,6 +15,8 @@ try {
   page.on('pageerror', e => errors.push(e.message));
   await page.getByRole('heading', { name: '从一台服务器开始' }).waitFor();
   assert.equal(await page.evaluate(() => typeof window.dockloom?.inspect), 'function');
+  assert.equal(await page.evaluate(() => typeof window.dockloom?.planCompose), 'function');
+  assert.equal(await page.evaluate(() => typeof window.dockloom?.deployCompose), 'function');
   console.log('PASS actual Electron window + preload bridge + empty onboarding');
   await page.getByRole('button', { name: '添加服务器', exact: true }).last().click();
   await page.getByRole('textbox', { name: '显示名称', exact: true }).fill('Local test connection');
@@ -49,6 +51,19 @@ try {
   await dialog.locator('button.primary').click();
   await page.locator('.job-detail .status').filter({ hasText: '已完成' }).waitFor();
   console.log('PASS deployment review + job completion + version history (demo)');
+  await page.getByRole('button', { name: '部署 Compose', exact: true }).click();
+  await page.getByRole('textbox', { name: /应用名称/ }).fill('ui-stack');
+  await page.getByRole('button', { name: '选择目录', exact: true }).click();
+  await page.getByRole('textbox', { name: /配置文件（每行一个）/ }).fill('compose.yaml\nproduction.yaml');
+  await page.getByRole('textbox', { name: /环境文件（每行一个）/ }).fill('.env.production');
+  await page.getByRole('textbox', { name: /Profiles（每行一个）/ }).fill('production');
+  await page.getByRole('button', { name: '生成部署计划', exact: true }).click();
+  await dialog.getByRole('heading', { name: '将发布的服务', exact: true }).waitFor();
+  assert.equal(await dialog.locator('.plan-summary code').allTextContents().then(names => names.join(',')), 'web,db');
+  await page.screenshot({ path: 'test-results/compose-review.png', fullPage: true });
+  await dialog.locator('button.primary').click();
+  await page.locator('.job-detail .status').filter({ hasText: '已完成' }).waitFor();
+  console.log('PASS Compose review services + ordered files/env/profiles + deployment job (demo)');
   await page.getByRole('button', { name: '界面语言', exact: true }).click();
   await page.getByRole('heading', { name: 'Deployments', exact: true }).waitFor();
   await page.getByRole('button', { name: /Staging staging.example.com/ }).click();

@@ -48,6 +48,18 @@ export const demoAPI: DockloomAPI = {
     return job;
   },
   async releases(id) { return structuredClone(releases.get(id) ?? []); },
+  async planCompose(id, req) {
+    server(id);
+    if (!/^[a-z][a-z0-9-]{0,47}$/.test(req.app) || !req.source || !req.files.length) throw new Error('Application, directory and Compose files are required');
+    return { fileCount: 4, bytes: 3400, target: `${server(id).root}/.dockloom/apps/${req.app}`, services: ['web', 'db'], warnings: ['DEMO: named volumes survive release rollback. Database changes are not rolled back.'], summary: ['DEMO: no real upload or deployment', `Compose files: ${req.files.join(', ')}`, 'Two-service stack with health verification'] };
+  },
+  async deployCompose(id, req) {
+    const job = makeJob(id, req.app, 'Compose deploy');
+    const list = releases.get(id) ?? []; list.filter(r => r.app === req.app).forEach(r => { r.current = false; });
+    list.unshift({ id: job.id, app: req.app, kind: 'compose', services: ['web', 'db'], createdAt: now(), port: 0, current: true, image: 'compose', status: 'succeeded' }); releases.set(id, list);
+    containers.set(id, [...(containers.get(id) ?? []).filter(c => c.project !== req.app), demoContainer(`${req.app}-web-1`, req.app, 'web', '0.0.0.0:8080 → 80/tcp', 'nginx:alpine'), demoContainer(`${req.app}-db-1`, req.app, 'db', '5432/tcp', 'postgres:17-alpine')]);
+    return job;
+  },
   async rollback(id, app, release) { const target = releases.get(id)?.find(r => r.app === app && r.id === release); if (!target) throw new Error('Release not found'); releases.get(id)?.filter(r => r.app === app).forEach(r => { r.current = r.id === release; }); return makeJob(id, app, 'Rollback'); },
   async jobs(id) { return structuredClone(jobs.get(id) ?? []); },
   async job(id, jid) { const j = jobs.get(id)?.find(j => j.id === jid); if (!j) throw new Error('Job not found'); return structuredClone(j); },

@@ -1,4 +1,13 @@
-# v0.1 alpha verification — 2026-10-25
+# Verification
+
+## v0.2 alpha — 2026-10-26
+
+- 26 unit/remote-script/store tests passed without skips; TypeScript and production builds passed.
+- Actual Electron UI passed connection persistence, static and Compose review/deployment, language and server isolation tests.
+- On October 25, the isolated SSH/Docker suite passed multi-service builds, ordered overrides, explicit environment files, profiles, dependency health, update/rollback, named-volume persistence and failed-release restoration without disturbing another app.
+- On October 26, a local Docker Desktop startup/socket failure prevented the final local integration rerun. The GitHub CI integration job validates the committed revision independently; consult its result before using a release.
+
+## v0.1 alpha — 2026-10-25
 
 Executed locally before handing off this alpha:
 

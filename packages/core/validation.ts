@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { ComposeImport, Server, StaticDeploy } from '../shared/types';
+import type { ComposeDeploy, ComposeImport, Server, StaticDeploy } from '../shared/types';
 
 const clean = (value: unknown): value is string => typeof value === 'string' && !/[\x00-\x1f\x7f]/.test(value);
 export function validateName(value: string): void {
@@ -39,6 +39,20 @@ export function validateCompose(request: ComposeImport): void {
   for (const file of request.files) {
     if (!clean(file) || file.startsWith('/') || file.includes('\\') || file.split('/').some(p => !p || p === '.' || p === '..')) throw new Error('Compose files must be safe paths relative to the project directory');
   }
+}
+
+export function validateComposeDeploy(request: ComposeDeploy): void {
+  validateName(request.app);
+  if (!clean(request.source) || !request.source) throw new Error('Source directory is required');
+  for (const [key, minimum] of [['files', 1], ['envFiles', 0]] as const) {
+    const values = request[key];
+    if (!Array.isArray(values) || values.length < minimum || values.length > 16) throw new Error('Specify up to 16 ordered Compose/environment files');
+    for (const value of values) {
+      if (!clean(value) || /[:\\$~]/.test(value) || value.split('/').some(p => !p || p === '.' || p === '..')) throw new Error('Compose/environment files must be safe source-relative paths');
+    }
+  }
+  if (!Array.isArray(request.profiles) || request.profiles.length > 32 || request.profiles.some(p => typeof p !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/.test(p))) throw new Error('Invalid Compose profiles');
+  if (!Number.isInteger(request.healthTimeout) || request.healthTimeout < 1 || request.healthTimeout > 600) throw new Error('Health timeout must be 1–600 seconds');
 }
 
 /** Best effort for logs, never a guarantee for arbitrary application output. */

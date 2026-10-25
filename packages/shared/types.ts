@@ -24,9 +24,15 @@ export interface StaticDeploy {
   app: string; source: string; port: number; spa: boolean; image: string;
   bindAddress: '0.0.0.0' | '127.0.0.1';
 }
+export interface ComposeDeploy {
+  app: string; source: string; files: string[]; envFiles: string[]; profiles: string[];
+  healthTimeout: number;
+}
+export interface ComposePlan extends DeployPlan { services: string[]; warnings: string[] }
 export interface Release {
   id: string; app: string; createdAt: string; port: number; current: boolean;
   image: string; status: string;
+  kind?: 'static' | 'compose'; services?: string[];
 }
 export interface Job {
   id: string; app: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted';
@@ -47,6 +53,8 @@ export interface DockloomAPI {
   chooseKey(): Promise<string | null>;
   plan(id: string, request: StaticDeploy): Promise<DeployPlan>;
   deploy(id: string, request: StaticDeploy): Promise<Job>;
+  planCompose(id: string, request: ComposeDeploy): Promise<ComposePlan>;
+  deployCompose(id: string, request: ComposeDeploy): Promise<Job>;
   releases(id: string): Promise<Release[]>;
   rollback(id: string, app: string, release: string): Promise<Job>;
   jobs(id: string): Promise<Job[]>;

@@ -1,4 +1,5 @@
 /** Embedded source: esbuild/Electron bundles this string; no runtime asset copying. */
+import { COMPOSE_PYTHON } from './remote-compose';
 export const REMOTE_PYTHON = String.raw`
 import base64, datetime, hashlib, json, os, pathlib, platform, re, shutil, socket, stat, subprocess, sys, tempfile, time, urllib.request, uuid
 
@@ -104,10 +105,10 @@ def app_dir(root, app, create=False):
         return None
     return owned_dir(ns / 'apps' / name(app), {'owner': OWNER, 'root': str(root), 'app': app}, create)
 
-def run(argv, check=True, timeout=90, tail=False):
+def run(argv, check=True, timeout=90, tail=False, env=None, cwd=None):
     # Tempfile-backed capture prevents unbounded application logs from filling RAM.
     with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
-        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=errors, start_new_session=True)
+        child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=errors, start_new_session=True, env=env, cwd=cwd)
         try:
             code = child.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -282,6 +283,10 @@ def verify_release(directory):
     return record
 
 def compose(app, release, args):
+    record = release_record(app / 'releases' / release)
+    if record.get('kind') == 'compose':
+        timeout = record.get('healthTimeout', 120) if args and args[0] == 'up' else 180
+        return compose_command(['docker', 'compose', '--env-file', '/dev/null', '--project-name', project_name(app), '--project-directory', str(app), '-f', str(app / 'releases' / release / 'compose.json')] + args, timeout=timeout)
     return run(['docker', 'compose', '--project-name', project_name(app), '--project-directory', str(app), '-f', str(app / 'releases' / release / 'compose.json')] + args, timeout=180)
 
 def compose_literals(value):
@@ -419,30 +424,41 @@ def worker(request, directory):
         if previous:
             verify_release(app / 'releases' / previous)
         no_links(app / 'releases').mkdir(exist_ok=True, mode=0o700)
-        if request['operation'] == 'deploy':
+        if request['operation'] in ('deploy', 'deployCompose'):
             target = state['id']
             stage('prepare: verify uploaded files and pin image')
-            record = prepare_release(app, target, request['spec'], request['files'])
+            if request['operation'] == 'deployCompose':
+                record = prepare_compose_release(app, target, request)
+            else:
+                record = prepare_release(app, target, request['spec'], request['files'])
         else:
             target = identifier(request['release'])
             record = verify_release(app / 'releases' / target)
             if record['status'] != 'succeeded':
                 raise ValueError('Only a previously verified release can be restored')
-            run(['docker', 'image', 'inspect', record['image']])
+            if record.get('kind') == 'compose':
+                for image in record['images'].values():
+                    compose_command(['docker', 'image', 'inspect', image])
+            else:
+                run(['docker', 'image', 'inspect', record['image']])
+        compatible_release(app, record)
+        if record.get('kind') == 'compose':
+            check_compose_resources(app, compose_values(read_json(app / 'releases' / target / 'compose.json')))
         remove_file(directory / 'request.json')
-        stage('validate: Compose and Nginx configuration')
+        stage('validate: Compose configuration')
         compose(app, target, ['config', '--quiet'])
         # Validate the selected Nginx-compatible image before touching the running service.
-        compose(app, target, ['run', '--rm', '--no-deps', '--entrypoint', 'nginx', 'web', '-t'])
-        preflight_port(app, record)
+        if record.get('kind') != 'compose':
+            compose(app, target, ['run', '--rm', '--no-deps', '--entrypoint', 'nginx', 'web', '-t'])
+            preflight_port(app, record)
         transaction = {'owner': OWNER, 'job': state['id'], 'previous': previous, 'target': target, 'state': 'switching'}
         write_json(app / 'transaction.json', transaction)
         transaction_started = True
         stage('switch')
         switched = True
-        compose(app, target, ['up', '-d', '--no-build', '--pull', 'never', 'web'])
-        stage('verify: server-local HTTP and immutable image')
-        wait_http(app, target, record)
+        switch_release(app, target, record)
+        stage('verify: service state, health and immutable image')
+        verify_running(app, target, record)
         record['status'] = 'succeeded'
         write_json(app / 'releases' / target / 'release.json', record)
         write_json(app / 'current.json', {'release': target})
@@ -459,12 +475,12 @@ def worker(request, directory):
                 stage('restore previous release')
                 if previous:
                     old = verify_release(app / 'releases' / previous)
-                    compose(app, previous, ['up', '-d', '--no-build', '--pull', 'never', 'web'])
-                    wait_http(app, previous, old)
+                    switch_release(app, previous, old)
+                    verify_running(app, previous, old)
                     write_json(app / 'current.json', {'release': previous})
                 else:
                     # Only this managed web service; never global down or volume deletion.
-                    compose(app, target, ['rm', '--stop', '--force', 'web'])
+                    compose(app, target, ['rm', '--stop', '--force'] + record.get('services', ['web']))
                     remove_file(app / 'current.json')
                 recovered = True
             except Exception as recovery_error:
@@ -472,7 +488,7 @@ def worker(request, directory):
         if transaction_started:
             transaction['state'] = 'restored' if recovered else 'recovery-required'
             write_json(app / 'transaction.json', transaction)
-        if target and request['operation'] == 'deploy' and (app / 'releases' / target / 'release.json').exists():
+        if target and request['operation'] in ('deploy', 'deployCompose') and (app / 'releases' / target / 'release.json').exists():
             record = read_json(app / 'releases' / target / 'release.json')
             record['status'] = 'failed'
             write_json(app / 'releases' / target / 'release.json', record)
@@ -492,9 +508,11 @@ def validate_spec(spec):
 
 def submit(request, script):
     root = root_path(request['root'])
-    app = name(request['spec']['app'] if request['operation'] == 'deploy' else request['app'])
+    app = name(request['spec']['app'] if request['operation'] in ('deploy', 'deployCompose') else request['app'])
     if request['operation'] == 'deploy':
         validate_spec(request['spec'])
+    elif request['operation'] == 'deployCompose':
+        validate_compose_spec(request['spec'])
     else:
         identifier(request['release'])
         existing = app_dir(root, app)
@@ -558,7 +576,9 @@ def dispatch(request, script):
     if operation == 'plan':
         app_dir(root, name(request['app']))
         return str(root / '.dockloom' / 'apps' / request['app'])
-    if operation in ('deploy', 'rollback'):
+    if operation == 'planCompose':
+        return plan_compose(root, request)
+    if operation in ('deploy', 'deployCompose', 'rollback'):
         return submit(request, script)
     if operation == 'importCompose':
         return import_compose(request['spec'])
@@ -586,7 +606,7 @@ def dispatch(request, script):
                     if not no_links(directory / 'release.json').exists():
                         continue
                     record = release_record(directory)
-                    results.append(dict({key: record[key] for key in ('id', 'app', 'createdAt', 'port', 'image', 'status')}, current=current == record['id']))
+                    results.append(dict({key: record[key] for key in ('id', 'app', 'createdAt', 'port', 'image', 'status', 'kind', 'services') if key in record}, current=current == record['id']))
         return sorted(results, key=lambda r: r['createdAt'], reverse=True)
     raise ValueError('Unsupported remote operation')
 
@@ -595,4 +615,4 @@ def main(request, script):
         print(json.dumps({'ok': True, 'result': dispatch(request, script)}))
     except Exception as error:
         print(json.dumps({'ok': False, 'error': scrub(error)[-8192:]}))
-`;
+` + COMPOSE_PYTHON;
