@@ -1,28 +1,99 @@
+<div align="center">
+
+<img src="assets/icon.png" width="80" alt="Dockloom logo" />
+
 # Dockloom
 
-A local-first desktop workspace for your Docker servers. Connect over SSH, discover Compose projects, inspect logs, and publish static sites or multi-service Compose applications with version history and rollback.
+### Your servers. Your apps. One clear workspace.
 
-**v0.2 alpha · Windows desktop · MIT**
+**Connect over SSH. Review the plan. Ship with a version to return to.**
 
-[简体中文](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+用一个桌面工作台，连接服务器、看清应用、发布新版本。
 
-![Dockloom workspace with synthetic demo data](docs/images/workspace.png)
+[English](README.md) · **[简体中文](README.zh-CN.md)**
 
-## What works in this alpha
+[![CI](https://github.com/stitchmaps/dockloom/actions/workflows/ci.yml/badge.svg)](https://github.com/stitchmaps/dockloom/actions/workflows/ci.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-82d9bd)](LICENSE)
+[![Windows](https://img.shields.io/badge/desktop-Windows_x64-8b9cff)](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0)
+[![Alpha](https://img.shields.io/badge/release-v0.2.0_alpha-b7a0ff)](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0)
 
-- Multiple saved SSH connections: host aliases or manual host/port/user/key configuration.
-- Host resources, Docker/Compose capability checks, existing project and container discovery.
-- Container logs, start, stop and restart, scoped to the selected container.
-- Static directory deployment with a review step, static/SPA mode and configurable binding/port.
-- Versioned static releases, health verification, rollback and server-side task records.
-- Compose releases from local source: ordered configuration and environment files, profiles, local Dockerfile builds, image pinning, health verification and rollback.
-- Project-scoped named volumes that persist across updates and rollback.
-- Read-only validation of existing Compose files without rewriting them.
-- Chinese/English interface and an explicitly labeled, network-free demo mode.
+**[Download for Windows](https://github.com/stitchmaps/dockloom/releases/download/v0.2.0/Dockloom-0.2.0.exe)** · [Release & checksums](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0) · [Try an example](examples/compose-stack) · [Report an issue](https://github.com/stitchmaps/dockloom/issues)
+
+</div>
+
+![Dockloom application workspace in English](docs/images/workspace-en.png)
+
+Dockloom is a local-first desktop workspace for Docker servers. Bring your SSH connection and a built website or Compose project. See what's running, review what you're about to publish, and follow each release from deployment to health verification.
+
+Built for personal servers, side projects and small self-hosted stacks. No Dockloom cloud account, public Docker API or always-on web panel is required.
+
+> **v0.2 alpha:** Windows x64 portable app, currently unsigned. Supports a defined Compose subset. Rollback restores application images/configuration; it does not restore database contents.
+
+## From a folder to a running application
+
+| What you want to do | What Dockloom gives you |
+| --- | --- |
+| Understand a server at a glance | Host resources, capabilities, projects, containers and ports |
+| Publish a website | Choose a built directory, port and static/SPA mode, then review and deploy |
+| Ship a multi-service app | Ordered Compose files, environment files, profiles and remote Dockerfile builds |
+| Know what happened | Persistent tasks, service health verification and release history |
+| Return to an earlier version | Managed rollback and attempted restoration after a failed switch |
+| Keep application data | Project-scoped named volumes retained across releases |
+| Operate existing services | Logs, explicit start/stop/restart and read-only Compose validation |
+| Explore before connecting | Chinese/English UI and a clearly labeled, network-free demo |
+
+## See the workflow
+
+### Review before you publish
+
+Choose the local source and target server. Review the resolved services and warnings before confirming.
+
+![Compose deployment review in English](docs/images/compose-en.png)
+
+### Follow the task and keep the history
+
+See deployment progress and recorded versions in one place. A task already submitted to the server continues if the desktop app closes; reconnect to inspect its result.
+
+![Deployment task and release history in English](docs/images/releases-en.png)
+
+*Screenshots show the actual application using synthetic demo data. They illustrate the interface; real deployment verification is covered by isolated SSH/Docker integration tests.*
+
+```mermaid
+flowchart LR
+    A[Choose local source] --> B[Review plan]
+    B --> C[Upload and build over SSH]
+    C --> D[Switch services]
+    D --> E{Health verified?}
+    E -->|Yes| F[Record current release]
+    E -->|No| G[Attempt previous release restoration]
+    F --> H[Select an older version to roll back]
+```
+
+## How it connects
+
+Dockloom runs on your computer. System OpenSSH connects to your Linux server, where Python and Docker Compose carry out the requested operation. Existing projects remain under their original management; only apps you publish through Dockloom get managed release history.
+
+```mermaid
+flowchart TB
+    subgraph Desktop[Your computer]
+        UI[Dockloom desktop] --> SSH[System OpenSSH / existing keys]
+    end
+    SSH -->|Encrypted SSH connection| Worker
+    subgraph Server[Your Linux server]
+        Worker[Python task runner] --> Compose[Docker Compose v2]
+        Compose --> Apps[Application containers]
+        Compose --> Volumes[Persistent named volumes]
+        Worker --> History[Private release files and task records]
+    end
+```
+
+[Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 The web preview is **demo-only**. Real SSH operations are available only through the desktop application's isolated preload bridge.
 
 ## Run from source
+
+Prefer a ready-to-run app? Download the [Windows portable release](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0), then follow the connection steps below.
 
 Requirements: Node.js **22.12+**, npm, and OpenSSH client on your computer.
 
@@ -86,6 +157,10 @@ npm run test:integration
 ```
 
 The integration suite needs a local Linux-container Docker engine. It creates a **privileged, disposable Docker-in-Docker fixture** with its own SSH host and Docker daemon, and cleans up the fixture and its anonymous volume after the test. It does not connect to any production server. Fixture images remain cached for repeat runs.
+
+The v0.2 code passed 27 core tests, actual Electron UI checks, Windows/Linux builds and the complete SSH/Docker deployment suite. [View the verified run →](https://github.com/stitchmaps/dockloom/actions/runs/40233275361)
+
+To regenerate the bilingual screenshots after building: `node scripts/screenshots.mjs`. It uses a temporary profile and synthetic demo data.
 
 ## Roadmap
 

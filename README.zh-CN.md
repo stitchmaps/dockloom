@@ -1,24 +1,97 @@
+<div align="center">
+
+<img src="assets/icon.png" width="80" alt="Dockloom 标志" />
+
 # Dockloom
 
-通过 SSH 管理自己的 Docker 服务器：发现 Compose 项目、查看日志、可视化发布静态网站和多服务 Compose 应用，支持版本记录与回滚。
+### 你的服务器，你的应用，一个清晰的工作台。
 
-**v0.2 alpha · Windows 桌面端 · MIT 开源许可**
+**连接 SSH，审阅计划，发布新版本，也留好回去的路。**
 
-[English](README.md) · [架构说明](docs/architecture.md) · [安全说明](SECURITY.md)
+Your servers. Your apps. One clear workspace.
 
-## 当前功能
+**[简体中文](README.zh-CN.md)** · [English](README.md)
 
-- 保存与切换多台服务器，支持 SSH 别名、手动地址、端口、用户与密钥路径。
-- 查看主机资源、部署能力、已有 Compose 项目与容器。
-- 查看容器日志，启动、停止和重启指定容器。
-- 选择本地静态网站目录，审阅计划后部署；可配置端口、监听地址与 SPA 路由回退。
-- 软件创建的静态站点支持版本记录、健康验证、失败恢复、历史版本回滚与任务重连。
-- 发布本地 Compose 项目：按顺序合并配置和环境文件、选择 Profiles、远端构建镜像、健康检查、更新与回滚。
-- 命名卷跨版本保留，应用版本与持久数据分开管理。
-- 已有 Compose 文件只读校验，不改写原配置。
-- 中英双语，明确标识的演示模式。
+[![CI](https://github.com/stitchmaps/dockloom/actions/workflows/ci.yml/badge.svg)](https://github.com/stitchmaps/dockloom/actions/workflows/ci.yml)
+[![MIT](https://img.shields.io/badge/license-MIT-82d9bd)](LICENSE)
+[![Windows](https://img.shields.io/badge/desktop-Windows_x64-8b9cff)](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0)
+[![Alpha](https://img.shields.io/badge/release-v0.2.0_alpha-b7a0ff)](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0)
+
+**[下载 Windows 便携版](https://github.com/stitchmaps/dockloom/releases/download/v0.2.0/Dockloom-0.2.0.exe)** · [发布页与校验文件](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0) · [体验示例](examples/compose-stack) · [反馈问题](https://github.com/stitchmaps/dockloom/issues)
+
+</div>
+
+![Dockloom 中文应用工作台](docs/images/workspace-zh.png)
+
+从个人网站到多服务应用，把服务器上的日常操作收进一个桌面工作台。Dockloom 通过你已有的 SSH 连接，展示正在运行的应用，发布本地静态网站或 Compose 项目，并记录每次部署与验证结果。
+
+适合管理个人服务器、独立项目和小型自托管服务。无需注册 Dockloom 云账号，无需开放 Docker API，也无需在服务器上常驻 Web 管理面板。
+
+> **当前为 v0.2 alpha：** Windows x64 便携版，尚未签名。Compose 有明确的支持范围；版本回滚恢复应用镜像与配置，不恢复数据库内容。
+
+## 从一个文件夹，到一个运行中的应用
+
+| 你想做的事 | Dockloom 帮你完成 |
+| --- | --- |
+| 看清服务器上有什么 | 主机资源、部署能力、项目、容器和端口，一处查看 |
+| 发布个人网站 | 选择构建目录，配置端口和静态/SPA 模式，审阅后发布 |
+| 部署多服务应用 | 按顺序合并配置与环境文件，选择 Profiles，在远端构建镜像 |
+| 知道这次发布发生了什么 | 查看任务进度、健康验证结果和历史版本 |
+| 回到之前的版本 | 为托管应用回滚版本；切换失败时尝试恢复上一版 |
+| 留住应用的数据 | 命名卷跨版本保留，应用发布与持久数据分开管理 |
+| 操作已有服务 | 查看日志，明确选择启停或重启，只读校验已有 Compose |
+| 先体验再连接 | 中英双语界面，明确标识、无需联网的演示模式 |
+
+## 看得见的发布流程
+
+### 发布前，先看清计划
+
+选择本地目录、配置文件顺序和目标服务器。确认服务清单与警告后，再开始部署。
+
+![Compose 发布计划审阅](docs/images/compose-zh.png)
+
+### 发布中看进度，发布后留版本
+
+任务与历史版本集中展示。提交到服务器的任务会继续运行，即使关闭桌面端，也可以重新连接查看结果。
+
+![部署任务与版本记录](docs/images/releases-zh.png)
+
+*以上是实际软件在演示模式下的截图，使用虚构服务器与示例数据。截图展示界面；真实部署能力由隔离 SSH/Docker 环境中的集成测试验证。*
+
+```mermaid
+flowchart LR
+    A[选择本地项目] --> B[审阅部署计划]
+    B --> C[通过 SSH 上传并构建]
+    C --> D[切换服务]
+    D --> E{健康验证通过?}
+    E -->|是| F[记录当前版本]
+    E -->|否| G[尝试恢复上一版本]
+    F --> H[可选择历史版本回滚]
+```
+
+## 它怎样连接服务器？
+
+Dockloom 在你的电脑上运行，通过系统 OpenSSH 连接 Linux 服务器，再由远端 Python 任务与 Docker Compose 执行操作。已有项目维持原有管理方式；通过 Dockloom 发布的应用才会创建托管版本。
+
+```mermaid
+flowchart TB
+    subgraph Desktop[你的电脑]
+        UI[Dockloom 桌面端] --> SSH[系统 OpenSSH / 已有密钥]
+    end
+    SSH -->|加密 SSH 连接| Worker
+    subgraph Server[你的 Linux 服务器]
+        Worker[Python 任务执行器] --> Compose[Docker Compose v2]
+        Compose --> Apps[应用容器]
+        Compose --> Volumes[持久化命名卷]
+        Worker --> History[私有版本文件与任务记录]
+    end
+```
+
+[架构说明](docs/architecture.md) · [安全说明](SECURITY.md) · [贡献指南](CONTRIBUTING.md)
 
 ## 启动
+
+直接使用可下载 [Windows 便携版](https://github.com/stitchmaps/dockloom/releases/tag/v0.2.0)，打开后按下方步骤添加服务器。发布页同时提供源码和校验文件。
 
 本机准备 Node.js 22.12+、npm 和 OpenSSH 客户端：
 
@@ -56,6 +129,10 @@ npm run dev
 `npm test` 执行核心测试，`npm run build` 执行类型检查和构建。`npm run test:ui` 验证实际 Electron 界面；`npm run test:integration` 在本机 Docker 中创建独立的 SSH + Docker 测试环境，验证实际部署、回滚与失败恢复。
 
 集成测试使用带特权的临时 Docker-in-Docker 容器，仅用于开发测试；结束后清理测试容器及其匿名数据卷，保留构建镜像缓存。不会连接正式服务器。
+
+v0.2 代码已通过 27 项核心测试、实际 Electron 界面测试、Windows/Linux 构建和完整 SSH/Docker 发布测试。[查看通过记录 →](https://github.com/stitchmaps/dockloom/actions/runs/40233275361)
+
+构建后执行 `node scripts/screenshots.mjs` 可重新生成中英双语截图，使用临时用户目录与演示数据。
 
 后续按需要扩展服务增删、离线包、域名与 HTTPS、其他桌面平台。欢迎提交可复现问题和小范围改进，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 

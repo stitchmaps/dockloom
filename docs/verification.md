@@ -5,7 +5,7 @@
 - 27 unit/remote-script/store tests passed without skips; TypeScript and production builds passed.
 - Actual Electron UI passed connection persistence, static and Compose review/deployment, language and server isolation tests.
 - On October 25, the isolated SSH/Docker suite passed multi-service builds, ordered overrides, explicit environment files, profiles, dependency health, update/rollback, named-volume persistence and failed-release restoration without disturbing another app.
-- On October 26, a local Docker Desktop startup/socket failure prevented the final local integration rerun. The GitHub CI integration job validates the committed revision independently; consult its result before using a release.
+- On October 26, a local Docker Desktop startup/socket failure prevented the final local integration rerun. The committed v0.2 code subsequently passed Windows/Linux checks and the complete isolated SSH/Docker suite in [GitHub CI](https://github.com/stitchmaps/dockloom/actions/runs/40233275361), including regression coverage for short health deadlines during container replacement.
 
 ## v0.1 alpha — 2026-10-25
 
